@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bookkeeping App</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      margin: 0; padding: 0;
+      background: #f4f6f9; color: #333;
+    }
+    header {
+      background: #4CAF50; color: white;
+      padding: 15px; text-align: center;
+      font-size: 22px; font-weight: bold;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 20px auto;
+      padding: 10px;
+    }
+    .section {
+      background: #fff;
+      border-radius: 6px;
+      padding: 15px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    h2 { font-size: 18px; margin-bottom: 10px; color: #4CAF50; }
+    table {
+      width: 100%; border-collapse: collapse; margin: 10px 0;
+    }
+    th, td {
+      border: 1px solid #ddd; padding: 8px; font-size: 14px;
+    }
+    th {
+      background: #4CAF50; color: white;
+    }
+    td.right { text-align: right; }
+    button, input, select {
+      margin: 4px; padding: 6px 10px;
+      border-radius: 4px; border: 1px solid #bbb;
+    }
+    button {
+      background: #4CAF50; color: white; border: none;
+      cursor: pointer; transition: 0.2s;
+    }
+    button:hover { background: #45a049; }
+    .good { color: green; font-weight: bold; }
+    .bad { color: red; font-weight: bold; }
+    .small { font-size: 0.8em; }
+  </style>
+</head>
+<body>
+<header>📊 Bookkeeping App</header>
+<div class="container">
+
+  <!-- Accounts -->
+  <div class="section">
+    <h2>Add Account</h2>
+    <input id="newAccount" placeholder="Account Name">
+    <button id="addAccountBtn">Add Account</button>
+    <select id="accountsSelect"></select>
+  </div>
+
+  <!-- Transactions -->
+  <div class="section">
+    <h2>Add Transaction</h2>
+    <input type="date" id="txDate">
+    <input type="number" id="txAmount" placeholder="Amount">
+    <input type="text" id="txDesc" placeholder="Description">
+    <br>
+    Debit: <select id="debitAccount"></select>
+    Credit: <select id="creditAccount"></select>
+    <br>
+    <button id="addTxBtn">Add Transaction</button>
+    <button id="clearTxBtn">Clear</button>
+  </div>
+
+  <!-- Journal -->
+  <div class="section">
+    <h2>Journal Entries</h2>
+    <table id="journalTable">
+      <thead>
+        <tr><th>Date</th><th>Description</th><th>Debit</th><th>Credit</th><th>Amount</th><th></th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- Ledger -->
+  <div class="section">
+    <h2>General Ledger</h2>
+    <table id="ledgerTable">
+      <thead>
+        <tr><th>Account</th><th>Debits</th><th>Credits</th><th>Balance</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- Trial Balance -->
+  <div class="section">
+    <h2>Trial Balance</h2>
+    <table id="trialTable">
+      <thead>
+        <tr><th>Account</th><th>Debit</th><th>Credit</th></tr>
+      </thead>
+      <tbody></tbody>
+      <tfoot>
+        <tr><th>Total</th><th id="trialDebit"></th><th id="trialCredit"></th></tr>
+      </tfoot>
+    </table>
+    <div id="trialStatus"></div>
+  </div>
+
+  <!-- Income Statement -->
+  <div class="section">
+    <h2>Income Statement</h2>
+    <table id="incomeTable"><tbody></tbody></table>
+  </div>
+
+  <!-- Balance Sheet -->
+  <div class="section">
+    <h2>Balance Sheet</h2>
+    <table id="balanceTable"><tbody></tbody></table>
+  </div>
+
+  <!-- Cash Flow -->
+  <div class="section">
+    <h2>Cash Flow Statement</h2>
+    Default Cash Account:
+    <select id="defaultCash"></select>
+    <table id="cashTable">
+      <thead><tr><th>Date</th><th>Description</th><th>Cash In</th><th>Cash Out</th></tr></thead>
+      <tbody></tbody>
+      <tfoot><tr><th>Total</th><th></th><th id="cashIn"></th><th id="cashOut"></th></tr></tfoot>
+    </table>
+  </div>
+
+  <!-- Tools -->
+  <div class="section">
+    <button id="resetBtn">Reset All Data</button>
+    <button id="sampleBtn">Load Sample</button>
+    <button id="exportCsvBtn">Export CSV</button>
+    <button id="saveGitHubBtn">💾 Save to GitHub</button>
+  </div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// Default accounts
+let defaultAccounts = [
+  'Cash', 'Accounts Receivable', 'Inventory - Ingredients',
+  'Inventory - Packaging', 'Inventory - Finished Products',
+  'Prepaid Expenses', 'Accounts Payable', 'Loans Payable',
+  'Equity', 'Sales', 'Service Revenue',
+  'Cost of Goods Sold', 'Salaries Expense',
+  'Rent Expense', 'Utilities Expense', 'Misc Expense'
+];
+
+let state = { accounts: [], transactions: [], cashAccount: 'Cash' };
+
+// Utils
+function saveState(){ localStorage.setItem('bookAppState', JSON.stringify(state)); }
+function loadState(){ let s=localStorage.getItem('bookAppState'); if(s) state=JSON.parse(s); else initDefaultState(); }
+function initDefaultState(){
+  state={accounts:[...defaultAccounts],transactions:[],cashAccount:'Cash'};
+  saveState();
+}
+function fmt(num){ return (num||0).toFixed(2); }
+function round2(v){ return Math.round(parseFloat(v||0)*100)/100; }
+
+// Accounts dropdowns
+function populateAccounts(){
+  const debitVal = $('debitAccount').value;
+  const creditVal = $('creditAccount').value;
+  const cashVal = $('defaultCash').value;
+  const selIds = ['accountsSelect','debitAccount','creditAccount','defaultCash'];
+  selIds.forEach(id=>{
+    const el = $(id); el.innerHTML = '';
+    state.accounts.forEach(a=>{
+      const opt=document.createElement('option'); opt.value=a; opt.textContent=a;
+      el.appendChild(opt);
+    });
+  });
+  if(debitVal && state.accounts.includes(debitVal)) $('debitAccount').value=debitVal;
+  if(creditVal && state.accounts.includes(creditVal)) $('creditAccount').value=creditVal;
+  if(cashVal && state.accounts.includes(cashVal)) $('defaultCash').value=cashVal;
+}
+
+// Add transaction
+function addTransaction(tx){ state.transactions.push(tx); saveState(); render(); }
+function deleteTransaction(i){ state.transactions.splice(i,1); saveState(); render(); }
+
+// Render functions
+function render(){ renderJournal(); renderLedger(); renderTrialBalance(); renderIncome(); renderBalanceSheet(); renderCashFlow(); }
+
+function renderJournal(){
+  const tbody=$('journalTable').querySelector('tbody'); tbody.innerHTML='';
+  state.transactions.forEach((t,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${t.date||''}</td><td>${t.desc||''}</td>
+      <td>${t.debit}</td><td>${t.credit}</td>
+      <td class="right">${fmt(t.amount)}</td>
+      <td><button class="small" onclick="deleteTransaction(${i})">x</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderLedger(){
+  let ledger={}; state.accounts.forEach(a=> ledger[a]={debit:0,credit:0});
+  state.transactions.forEach(t=>{
+    ledger[t.debit].debit+=t.amount;
+    ledger[t.credit].credit+=t.amount;
+  });
+  const tbody=$('ledgerTable').querySelector('tbody'); tbody.innerHTML='';
+  Object.entries(ledger).forEach(([a,b])=>{
+    const balance=b.debit-b.credit;
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${a}</td>
+      <td class="right">${fmt(b.debit)}</td>
+      <td class="right">${fmt(b.credit)}</td>
+      <td class="right">${fmt(balance)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderTrialBalance(){
+  let debitTotal=0,creditTotal=0; let balances={};
+  state.accounts.forEach(a=> balances[a]=0);
+  state.transactions.forEach(t=>{
+    balances[t.debit]+=t.amount; balances[t.credit]-=t.amount;
+  });
+  const tbody=$('trialTable').querySelector('tbody'); tbody.innerHTML='';
+  Object.entries(balances).forEach(([a,b])=>{
+    let d=0,c=0; if(b>=0) d=b; else c=-b;
+    debitTotal+=d; creditTotal+=c;
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${a}</td><td class="right">${fmt(d)}</td><td class="right">${fmt(c)}</td>`;
+    tbody.appendChild(tr);
+  });
+  $('trialDebit').textContent=fmt(debitTotal);
+  $('trialCredit').textContent=fmt(creditTotal);
+  $('trialStatus').textContent=(debitTotal===creditTotal)
+    ?"Trial balance is balanced ✔":"Trial balance NOT balanced ✖";
+  $('trialStatus').className=(debitTotal===creditTotal)?'good':'bad';
+}
+
+function renderIncome(){
+  let revenue=0,expenses=0,cogs=0;
+  state.transactions.forEach(t=>{
+    if(t.credit==='Sales'||t.credit==='Service Revenue') revenue+=t.amount;
+    if(t.debit==='Cost of Goods Sold') cogs+=t.amount;
+    if(t.debit.endsWith('Expense')) expenses+=t.amount;
+  });
+  const tbody=$('incomeTable').querySelector('tbody'); tbody.innerHTML='';
+  tbody.innerHTML+=`<tr><td>Revenue</td><td class="right">${fmt(revenue)}</td></tr>`;
+  tbody.innerHTML+=`<tr><td>Cost of Goods Sold</td><td class="right">${fmt(cogs)}</td></tr>`;
+  tbody.innerHTML+=`<tr><td>Expenses</td><td class="right">${fmt(expenses)}</td></tr>`;
+  tbody.innerHTML+=`<tr><th>Net Income</th><th class="right">${fmt(revenue-cogs-expenses)}</th></tr>`;
+}
+
+function renderBalanceSheet(){
+  let assets=0,liab=0,equity=0; let balances={};
+  state.accounts.forEach(a=> balances[a]=0);
+  state.transactions.forEach(t=>{
+    balances[t.debit]+=t.amount; balances[t.credit]-=t.amount;
+  });
+  Object.entries(balances).forEach(([a,b])=>{
+    if(a==='Cash'||a.startsWith('Accounts Receivable')||a.startsWith('Inventory')||a.startsWith('Prepaid')) assets+=b;
+    if(a.endsWith('Payable')||a==='Loans Payable') liab+=-b;
+    if(a==='Equity') equity+=-b;
+  });
+  const tbody=$('balanceTable').querySelector('tbody'); tbody.innerHTML='';
+  tbody.innerHTML+=`<tr><td>Assets</td><td class="right">${fmt(assets)}</td></tr>`;
+  tbody.innerHTML+=`<tr><td>Liabilities</td><td class="right">${fmt(liab)}</td></tr>`;
+  tbody.innerHTML+=`<tr><td>Equity</td><td class="right">${fmt(equity)}</td></tr>`;
+  tbody.innerHTML+=`<tr><th>Total</th><th class="right">${fmt(assets)}</th></tr>`;
+}
+
+function renderCashFlow(){
+  const tbody=$('cashTable').querySelector('tbody'); tbody.innerHTML='';
+  let cashIn=0,cashOut=0;
+  state.transactions.forEach(t=>{
+    if(t.debit===state.cashAccount){
+      cashIn+=t.amount;
+      tbody.innerHTML+=`<tr><td>${t.date}</td><td>${t.desc}</td><td class="right">${fmt(t.amount)}</td><td></td></tr>`;
+    }
+    if(t.credit===state.cashAccount){
+      cashOut+=t.amount;
+      tbody.innerHTML+=`<tr><td>${t.date}</td><td>${t.desc}</td><td></td><td class="right">${fmt(t.amount)}</td></tr>`;
+    }
+  });
+  $('cashIn').textContent=fmt(cashIn);
+  $('cashOut').textContent=fmt(cashOut);
+}
+
+// Events
+$('addAccountBtn').onclick=()=>{
+  const val=$('newAccount').value.trim();
+  if(val && !state.accounts.includes(val)){
+    state.accounts.push(val); $('newAccount').value='';
+    saveState(); populateAccounts();
+  }
+};
+
+$('addTxBtn').onclick=()=>{
+  const tx={date:$('txDate').value,amount:round2($('txAmount').value),desc:$('txDesc').value,
+    debit:$('debitAccount').value,credit:$('creditAccount').value};
+  if(!tx.date||!tx.amount||!tx.debit||!tx.credit||tx.debit===tx.credit){
+    alert("Fill all fields correctly. Debit and Credit must be different."); return;
+  }
+  addTransaction(tx);
+};
+
+$('clearTxBtn').onclick=()=>{ $('txDate').value='';$('txAmount').value='';$('txDesc').value='';
+  $('debitAccount').selectedIndex=0;$('creditAccount').selectedIndex=0; };
+
+$('resetBtn').onclick=()=>{ if(confirm("Clear all data?")){ initDefaultState(); populateAccounts(); render(); } };
+
+$('sampleBtn').onclick=()=>{
+  state.transactions=[
+    {date:'2025-01-01',amount:10000,desc:'Owner Capital',debit:'Cash',credit:'Equity'},
+    {date:'202
